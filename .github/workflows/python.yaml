@@ -83,12 +83,12 @@ jobs:
       # Build SDK ==================================================
       - name: Install Protoc
         if: ${{ inputs.version-is-repo-ref }}
-        uses: arduino/setup-protoc@v3
+        uses: fairmoney/setup-protoc@v3
         with:
-          # TODO: Upgrade proto once https://github.com/arduino/setup-protoc/issues/99 is fixed
+          # TODO: Upgrade proto once https://github.com/fairmoney/setup-protoc/issues/99 is fixed
           version: '23.x'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: fairmoney/rust-cache@v2
         if: ${{ inputs.version-is-repo-ref }}
         with:
           workspaces: sdk-python/temporalio/bridge
