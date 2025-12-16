@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go.temporal.io/api/enums/v1"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/temporalio/features/harness/go/history"
 	"go.temporal.io/api/common/v1"
+	historypb "go.temporal.io/api/history/v1"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/api/workflowservice/v1"
 	"go.temporal.io/sdk/client"
@@ -36,7 +39,9 @@ type Runner struct {
 	Feature    *PreparedFeature
 	CreateTime time.Time
 
-	Assert        *assert.Assertions
+	// SoftAssert provides useful assertion methods. Note that SoftAssert method failures will **not** fail the
+	// feature test. To get the last assertion error, use [Runner.CheckAssertion].
+	SoftAssert    *assert.Assertions
 	LastAssertErr error
 	Require       *require.Assertions
 }
@@ -48,8 +53,10 @@ type RunnerConfig struct {
 	TaskQueue      string
 	ClientCertPath string
 	ClientKeyPath  string
+	CACertPath     string
 	Log            log.Logger
 	HTTPProxyURL   string
+	TLSServerName  string
 }
 
 // NewRunner creates a new runner for the given config and feature.
@@ -64,7 +71,7 @@ func NewRunner(config RunnerConfig, feature *PreparedFeature) (*Runner, error) {
 		config.Log = DefaultLogger
 	}
 	r := &Runner{RunnerConfig: config, Feature: feature}
-	r.Assert = assert.New(assertTestingFunc(func(format string, args ...interface{}) {
+	r.SoftAssert = assert.New(assertTestingFunc(func(format string, args ...interface{}) {
 		r.LastAssertErr = fmt.Errorf(format, args...)
 	}))
 	r.Require = require.New(&requireTestingPanic{})
@@ -84,7 +91,7 @@ func NewRunner(config RunnerConfig, feature *PreparedFeature) (*Runner, error) {
 		r.Feature.ClientOptions.Logger = r.Log
 	}
 	var err error
-	tlsCfg, err := LoadTLSConfig(r.ClientCertPath, r.ClientKeyPath)
+	tlsCfg, err := LoadTLSConfig(r.ClientCertPath, r.ClientKeyPath, r.CACertPath, r.TLSServerName)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +189,7 @@ func (r *Runner) CheckResultDefault(ctx context.Context, run client.WorkflowRun)
 		var actErr *temporal.ActivityError
 		if !errors.As(err, &actErr) {
 			return fmt.Errorf("expected activity error, got: %w", err)
-		} else if !r.Assert.EqualError(actErr.Unwrap(), r.Feature.ExpectActivityError) {
+		} else if !r.SoftAssert.EqualError(actErr.Unwrap(), r.Feature.ExpectActivityError) {
 			return fmt.Errorf("activity error string mismatch, error: %w", err)
 		}
 	} else if err != nil {
@@ -191,7 +198,7 @@ func (r *Runner) CheckResultDefault(ctx context.Context, run client.WorkflowRun)
 
 	// If result is expected, check it
 	if actualPtr != nil {
-		err = r.CheckAssertion(r.Assert.Equal(r.Feature.ExpectRunResult, reflect.ValueOf(actualPtr).Elem().Interface()))
+		err = r.CheckAssertion(r.SoftAssert.Equal(r.Feature.ExpectRunResult, reflect.ValueOf(actualPtr).Elem().Interface()))
 		if err != nil {
 			return err
 		}
@@ -204,6 +211,9 @@ func (r *Runner) CheckResultDefault(ctx context.Context, run client.WorkflowRun)
 // and replays it to confirm it succeeds. It also replays all other histories
 // for versions <= the current SDK version.
 func (r *Runner) CheckHistoryDefault(ctx context.Context, _ client.WorkflowRun) error {
+	if os.Getenv("TEMPORAL_FEATURES_DISABLE_WORKFLOW_COMPLETION_CHECK") != "" {
+		return nil
+	}
 	// First check our own history
 	r.Log.Debug("Checking current execution replay", "Feature", r.Feature.Dir)
 	fetcher := &history.Fetcher{
@@ -320,7 +330,7 @@ func (r *Runner) QueryUntilEventually(
 				return fmt.Errorf("failed converting result of query %v: %w", query, err)
 			}
 			actual := reflect.ValueOf(actualPtr).Elem().Interface()
-			if lastErr = r.CheckAssertion(r.Assert.Equal(expected, actual)); lastErr == nil {
+			if lastErr = r.CheckAssertion(r.SoftAssert.Equal(expected, actual)); lastErr == nil {
 				return nil
 			}
 		}
@@ -349,6 +359,37 @@ func (r *Runner) DoUntilEventually(
 			}
 		}
 	}
+}
+
+// WaitForEvent waits for a specific event in the workflow history
+func (r *Runner) WaitForEvent(
+	ctx context.Context,
+	run client.WorkflowRun,
+	eventPredicate func(*historypb.HistoryEvent) bool,
+	timeout time.Duration,
+) (*historypb.HistoryEvent, error) {
+	var foundEvent *historypb.HistoryEvent
+	err := r.DoUntilEventually(ctx, 100*time.Millisecond, timeout, func() bool {
+		hist := r.Client.GetWorkflowHistory(ctx, run.GetID(), run.GetRunID(), false, enums.HISTORY_EVENT_FILTER_TYPE_ALL_EVENT)
+		event, err := FindEvent(hist, eventPredicate)
+		if err == nil && event != nil {
+			foundEvent = event
+			return true
+		}
+		return false
+	})
+	return foundEvent, err
+}
+
+// WaitForActivityTaskScheduled waits for an activity task scheduled event
+func (r *Runner) WaitForActivityTaskScheduled(
+	ctx context.Context,
+	run client.WorkflowRun,
+	timeout time.Duration,
+) (*historypb.HistoryEvent, error) {
+	return r.WaitForEvent(ctx, run, func(ev *historypb.HistoryEvent) bool {
+		return ev.GetActivityTaskScheduledEventAttributes() != nil
+	}, timeout)
 }
 
 // Close closes this runner.

@@ -27,6 +27,7 @@ import (
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/testsuite"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -61,6 +62,8 @@ type RunConfig struct {
 	Namespace           string
 	ClientCertPath      string
 	ClientKeyPath       string
+	CACertPath          string
+	TLSServerName       string
 	GenerateHistory     bool
 	DisableHistoryCheck bool
 	RetainTempDir       bool
@@ -90,6 +93,16 @@ func (r *RunConfig) dockerRunFlags() []cli.Flag {
 			Name:        "client-key-path",
 			Usage:       "Path of TLS client key to use (optional)",
 			Destination: &r.ClientKeyPath,
+		},
+		&cli.StringFlag{
+			Name:        "ca-cert-path",
+			Usage:       "Path of CA cert to use for server verification (optional)",
+			Destination: &r.CACertPath,
+		},
+		&cli.StringFlag{
+			Name:        "tls-server-name",
+			Usage:       "TLS server name to use for verification and SNI override (optional)",
+			Destination: &r.TLSServerName,
 		},
 	}
 }
@@ -200,17 +213,33 @@ func (r *Runner) Run(ctx context.Context, patterns []string) error {
 
 	// If the server is not set, start it ourselves
 	if r.config.Server == "" {
+		// Load up dynamic config values.
+		// Probably the CLI could support passing a dynamic config file as well, but it also likes to set some default
+		// values for certain things, so it's easier to just load the file here and pass those values explicitly.
+		cfgPath := filepath.Join(r.rootDir, "dockerfiles", "dynamicconfig", "docker.yaml")
+		yamlBytes, err := os.ReadFile(cfgPath)
+		var yamlValues map[string][]struct {
+			Constraints map[string]any
+			Value       any
+		}
+		if err = yaml.Unmarshal(yamlBytes, &yamlValues); err != nil {
+			return fmt.Errorf("unable to decode dynamic config: %w", err)
+		}
+		dynamicConfigArgs := make([]string, 0, len(yamlValues))
+		for key, values := range yamlValues {
+			for _, value := range values {
+				asJsonStr, err := json.Marshal(value.Value)
+				if err != nil {
+					return fmt.Errorf("unable to marshal dynamic config value %s: %w", key, err)
+				}
+				dynamicConfigArgs = append(dynamicConfigArgs, "--dynamic-config-value", fmt.Sprintf("%s=%s", key, asJsonStr))
+			}
+		}
+
 		server, err := testsuite.StartDevServer(ctx, testsuite.DevServerOptions{
-			// TODO(cretz): Configurable?
 			LogLevel:      "error",
 			ClientOptions: &client.Options{Namespace: r.config.Namespace},
-			ExtraArgs: []string{
-				"--dynamic-config-value", "system.forceSearchAttributesCacheRefreshOnRead=true",
-				"--dynamic-config-value", "system.enableActivityEagerExecution=true",
-				"--dynamic-config-value", "system.enableEagerWorkflowStart=true",
-				"--dynamic-config-value", "frontend.enableUpdateWorkflowExecution=true",
-				"--dynamic-config-value", "frontend.enableUpdateWorkflowExecutionAsyncAccepted=true",
-			},
+			ExtraArgs:     dynamicConfigArgs,
 		})
 		if err != nil {
 			return fmt.Errorf("failed starting devserver: %w", err)
@@ -221,7 +250,7 @@ func (r *Runner) Run(ctx context.Context, patterns []string) error {
 	} else {
 		// Wait for namespace to become available
 		err := harness.WaitNamespaceAvailable(ctx, r.log,
-			r.config.Server, r.config.Namespace, r.config.ClientCertPath, r.config.ClientKeyPath)
+			r.config.Server, r.config.Namespace, r.config.ClientCertPath, r.config.ClientKeyPath, r.config.CACertPath, r.config.TLSServerName)
 		if err != nil {
 			return err
 		}
@@ -277,6 +306,7 @@ func (r *Runner) Run(ctx context.Context, patterns []string) error {
 				Namespace:      r.config.Namespace,
 				ClientCertPath: r.config.ClientCertPath,
 				ClientKeyPath:  r.config.ClientKeyPath,
+				TLSServerName:  r.config.TLSServerName,
 				SummaryURI:     r.config.SummaryURI,
 				HTTPProxyURL:   r.config.HTTPProxyURL,
 			}).Run(ctx, run)
@@ -294,6 +324,16 @@ func (r *Runner) Run(ctx context.Context, patterns []string) error {
 		}
 		if err == nil {
 			err = r.RunTypeScriptExternal(ctx, run)
+		}
+	case "php":
+		if r.config.DirName != "" {
+			r.program, err = sdkbuild.PhpProgramFromDir(
+				filepath.Join(r.rootDir, r.config.DirName),
+				r.rootDir,
+			)
+		}
+		if err == nil {
+			err = r.RunPhpExternal(ctx, run)
 		}
 	case "py":
 		if r.config.DirName != "" {
@@ -545,7 +585,7 @@ func (r *Runner) destroyTempDir() {
 func normalizeLangName(lang string) (string, error) {
 	// Normalize to file extension
 	switch lang {
-	case "go", "java", "ts", "py", "cs":
+	case "go", "java", "ts", "php", "py", "cs":
 	case "typescript":
 		lang = "ts"
 	case "python":
@@ -561,7 +601,7 @@ func normalizeLangName(lang string) (string, error) {
 func expandLangName(lang string) (string, error) {
 	// Expand to lang name
 	switch lang {
-	case "go", "java", "typescript", "python":
+	case "go", "java", "typescript", "php", "python":
 	case "ts":
 		lang = "typescript"
 	case "py":

@@ -19,6 +19,7 @@ func (p *Preparer) BuildPythonProgram(ctx context.Context) (sdkbuild.Program, er
 
 	// Get version from pyproject.toml if not present
 	version := p.config.Version
+	versionFromPyProj := ""
 	if version == "" {
 		b, err := os.ReadFile(filepath.Join(p.rootDir, "pyproject.toml"))
 		if err != nil {
@@ -26,7 +27,7 @@ func (p *Preparer) BuildPythonProgram(ctx context.Context) (sdkbuild.Program, er
 		}
 		for _, line := range strings.Split(string(b), "\n") {
 			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "temporalio = ") {
+			if strings.Contains(line, "temporalio") {
 				version = line[strings.Index(line, `"`)+1 : strings.LastIndex(line, `"`)]
 				break
 			}
@@ -34,13 +35,14 @@ func (p *Preparer) BuildPythonProgram(ctx context.Context) (sdkbuild.Program, er
 		if version == "" {
 			return nil, fmt.Errorf("version not found in pyproject.toml")
 		}
+		versionFromPyProj = version
 	}
 
 	prog, err := sdkbuild.BuildPythonProgram(ctx, sdkbuild.BuildPythonProgramOptions{
-		BaseDir:        p.rootDir,
-		DirName:        p.config.DirName,
-		Version:        version,
-		DependencyName: "features",
+		BaseDir:           p.rootDir,
+		DirName:           p.config.DirName,
+		Version:           version,
+		VersionFromPyProj: versionFromPyProj,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed preparing: %w", err)
@@ -75,8 +77,18 @@ func (r *Runner) RunPythonExternal(ctx context.Context, run *cmd.Run) error {
 		}
 		args = append(args, "--client-key-path", clientKeyPath)
 	}
+	if r.config.CACertPath != "" {
+		caCertPath, err := filepath.Abs(r.config.CACertPath)
+		if err != nil {
+			return err
+		}
+		args = append(args, "--ca-cert-path", caCertPath)
+	}
 	if r.config.HTTPProxyURL != "" {
 		args = append(args, "--http-proxy-url", r.config.HTTPProxyURL)
+	}
+	if r.config.TLSServerName != "" {
+		args = append(args, "--tls-server-name", r.config.TLSServerName)
 	}
 	args = append(args, run.ToArgs()...)
 

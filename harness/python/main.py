@@ -21,8 +21,14 @@ async def run():
         "--client-cert-path", help="Path to a client certificate for TLS"
     )
     parser.add_argument("--client-key-path", help="Path to a client key for TLS")
-    parser.add_argument("--log-level", help="Log level", default="INFO")
+    parser.add_argument(
+        "--ca-cert-path", help="Path to a CA certificate for server verification"
+    )
+    parser.add_argument("--log-level", help="Log level", default="WARNING")
     parser.add_argument("--http-proxy-url", help="HTTP proxy URL")
+    parser.add_argument(
+        "--tls-server-name", help="TLS server name to use for verification (optional)"
+    )
     parser.add_argument(
         "features", help="Features as dir + ':' + task queue", nargs="+"
     )
@@ -37,7 +43,14 @@ async def run():
             client_cert = f.read()
         with open(args.client_key_path, "rb") as f:
             client_key = f.read()
-        tls_config = TLSConfig(client_cert=client_cert, client_private_key=client_key)
+
+        tls_kwargs = {"client_cert": client_cert, "client_private_key": client_key}
+        if args.ca_cert_path:
+            with open(args.ca_cert_path, "rb") as f:
+                tls_kwargs["server_root_ca_cert"] = f.read()
+        if args.tls_server_name:
+            tls_kwargs["domain"] = args.tls_server_name
+        tls_config = TLSConfig(**tls_kwargs)
     elif args.client_key_path and not args.client_cert_path:
         raise ValueError("Client key specified, but not client cert!")
 
@@ -52,7 +65,7 @@ async def run():
     )
 
     # Run each feature
-    failure_count = 0
+    failed_features = []
     for rel_dir_and_task_queue in cast(List[str], args.features):
         # Split rel dir and task queue
         rel_dir, _, task_queue = rel_dir_and_task_queue.partition(":")
@@ -75,10 +88,12 @@ async def run():
             ).run()
         except Exception:
             logger.exception("Feature %s failed", rel_dir)
-            failure_count += 1
+            failed_features.append(rel_dir)
 
-    if failure_count:
-        raise RuntimeError(f"{failure_count} feature(s) failed")
+    if failed_features:
+        raise RuntimeError(
+            f"{len(failed_features)} feature(s) failed:\n" + "\n".join(failed_features)
+        )
     logger.info("All features passed")
 
 

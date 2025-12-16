@@ -4,6 +4,7 @@ import (
 	activity_basic_no_workflow_timeout "github.com/temporalio/features/features/activity/basic_no_workflow_timeout"
 	activity_cancel_try_cancel "github.com/temporalio/features/features/activity/cancel_try_cancel"
 	activity_retry_on_error "github.com/temporalio/features/features/activity/retry_on_error"
+	activity_shutdown "github.com/temporalio/features/features/activity/shutdown"
 	bugs_go_activity_start_race "github.com/temporalio/features/features/bugs/go/activity_start_race"
 	bugs_go_child_workflow_cancel_panic "github.com/temporalio/features/features/bugs/go/child_workflow_cancel_panic"
 	build_id_versioning_activity_and_child_on_correct_version "github.com/temporalio/features/features/build_id_versioning/activity_and_child_on_correct_version"
@@ -24,6 +25,10 @@ import (
 	data_converter_failure "github.com/temporalio/features/features/data_converter/failure"
 	data_converter_json "github.com/temporalio/features/features/data_converter/json"
 	data_converter_json_protobuf "github.com/temporalio/features/features/data_converter/json_protobuf"
+	deployment_versioning_routing_auto_upgrade "github.com/temporalio/features/features/deployment_versioning/routing_auto_upgrade"
+	deployment_versioning_routing_pinned "github.com/temporalio/features/features/deployment_versioning/routing_pinned"
+	deployment_versioning_routing_with_override "github.com/temporalio/features/features/deployment_versioning/routing_with_override"
+	deployment_versioning_routing_with_ramp "github.com/temporalio/features/features/deployment_versioning/routing_with_ramp"
 	eager_activity_non_remote_activities_worker "github.com/temporalio/features/features/eager_activity/non_remote_activities_worker"
 	eager_workflow_successful_start "github.com/temporalio/features/features/eager_workflow/successful_start"
 	query_successful_query "github.com/temporalio/features/features/query/successful_query"
@@ -58,6 +63,7 @@ func init() {
 		activity_basic_no_workflow_timeout.Feature,
 		activity_cancel_try_cancel.Feature,
 		activity_retry_on_error.Feature,
+		activity_shutdown.Feature,
 		bugs_go_activity_start_race.Feature,
 		bugs_go_child_workflow_cancel_panic.Feature,
 		build_id_versioning_activity_and_child_on_correct_version.Feature,
@@ -78,6 +84,10 @@ func init() {
 		data_converter_failure.Feature,
 		data_converter_json_protobuf.Feature,
 		data_converter_json.Feature,
+		deployment_versioning_routing_auto_upgrade.Feature,
+		deployment_versioning_routing_pinned.Feature,
+		deployment_versioning_routing_with_override.Feature,
+		deployment_versioning_routing_with_ramp.Feature,
 		eager_activity_non_remote_activities_worker.Feature,
 		eager_workflow_successful_start.Feature,
 		query_successful_query.Feature,

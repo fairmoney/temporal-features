@@ -44,7 +44,6 @@ func (p *PrepareConfig) flags() []cli.Flag {
 		&cli.StringFlag{
 			Name:        "version",
 			Usage:       "SDK language version to run. Most languages support versions as paths.",
-			Required:    true,
 			Destination: &p.Version,
 		},
 	}
@@ -73,8 +72,6 @@ func (p *Preparer) Prepare(ctx context.Context) error {
 		return fmt.Errorf("directory required")
 	} else if strings.ContainsAny(p.config.DirName, `\/`) {
 		return fmt.Errorf("directory must not have path separators, it is always relative to the SDK features root")
-	} else if p.config.Version == "" {
-		return fmt.Errorf("version required")
 	}
 
 	// Try to create dir or error if already exists.
@@ -90,6 +87,8 @@ func (p *Preparer) Prepare(ctx context.Context) error {
 		_, err = p.BuildJavaProgram(ctx, true)
 	case "ts":
 		_, err = p.BuildTypeScriptProgram(ctx)
+	case "php":
+		_, err = p.BuildPhpProgram(ctx)
 	case "py":
 		_, err = p.BuildPythonProgram(ctx)
 	case "cs":

@@ -44,6 +44,7 @@ public class Runner implements Closeable {
     public Scope metricsScope = new NoopScope();
     public SslContext sslContext;
     public String httpProxyUrl;
+    public String tlsServerName;
   }
 
   public final Config config;
@@ -68,6 +69,12 @@ public class Runner implements Closeable {
             .setTarget(config.serverHostPort)
             .setSslContext(config.sslContext)
             .setMetricsScope(config.metricsScope);
+    if (config.sslContext != null
+        && config.tlsServerName != null
+        && !config.tlsServerName.isEmpty()) {
+      serviceBuild.setChannelInitializer(
+          channelBuilder -> channelBuilder.overrideAuthority(config.tlsServerName));
+    }
     feature.workflowServiceOptions(serviceBuild);
     service = WorkflowServiceStubs.newServiceStubs(serviceBuild.build());
     // Shutdown service on failure
@@ -384,5 +391,29 @@ public class Runner implements Closeable {
       }
     }
     Assertions.fail("retry limit exceeded");
+  }
+
+  public void waitForEvent(
+      Run run,
+      java.util.function.Predicate<io.temporal.api.history.v1.HistoryEvent> predicate,
+      Duration timeout)
+      throws Exception {
+    long start = System.currentTimeMillis();
+    Duration pollInterval = Duration.ofMillis(100);
+
+    while (System.currentTimeMillis() - start < timeout.toMillis()) {
+      var history = getWorkflowHistory(run);
+      var event = history.getEventsList().stream().filter(predicate).findFirst();
+      if (event.isPresent()) {
+        return;
+      }
+      Thread.sleep(pollInterval.toMillis());
+    }
+
+    throw new RuntimeException("Event not found within " + timeout.toMillis() + "ms");
+  }
+
+  public void waitForActivityTaskScheduled(Run run, Duration timeout) throws Exception {
+    waitForEvent(run, event -> event.hasActivityTaskScheduledEventAttributes(), timeout);
   }
 }

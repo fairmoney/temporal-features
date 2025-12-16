@@ -17,7 +17,7 @@ These features serve several purposes:
 With latest [Go](https://golang.org/) installed, run:
 
 ```
-go build -o temporal-features # or temporal-features.exec on Windows
+go build -o temporal-features # or temporal-features.exe on Windows
 ```
 
 ## Running
@@ -27,10 +27,10 @@ Prerequisites:
 - [Go](https://golang.org/) 1.17+
 - [JDK](https://adoptium.net/?variant=openjdk11&jvmVariant=hotspot) 11+
 - [Node](https://nodejs.org) 16+
-- [Python](https://www.python.org/) 3.10+
-  - [Poetry](https://python-poetry.org/): `poetry install`
-  - `setuptools`: `python -m pip install -U setuptools`
+- [uv](https://docs.astral.sh/uv/)
 - [.NET](https://dotnet.microsoft.com) 7+
+- [PHP](https://www.php.net/) 8.1+
+  - [Composer](https://getcomposer.org/)
 
 Command:
 
@@ -38,7 +38,7 @@ Command:
 
 Note, `go run .` can be used in place of `go build` + `temporal-features` to save on the build step.
 
-`LANG` can be `go`, `java`, `ts`, `py`, or `cs`. `VERSION` is per SDK and if left off, uses the latest version set for
+`LANG` can be `go`, `java`, `ts`, `php`, `py`, or `cs`. `VERSION` is per SDK and if left off, uses the latest version set for
 the language in this repository.
 
 `PATTERN` must match either the features relative directory _or_ the relative directory + `/feature.<ext>` via
@@ -170,6 +170,10 @@ when running the suites.
 Publishing docker images of the features runner/suites is also supported. It may be run
 [manually](https://github.com/temporalio/features/actions/workflows/all-docker-images.yaml),
 but is also triggered by default on each push to main.
+
+The dynamic configuration file located at `dockerfiles/dynamicconfig/docker.yaml` defines the dynamic configuration
+settings needed for features to run, and should be used as part of or all of the dynamic config settings for any
+external server not using the basic docker-compose setup.
 
 ## TODO
 

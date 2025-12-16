@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"io"
 )
 
 // BuildTypeScriptProgramOptions are options for BuildTypeScriptProgram.
@@ -33,6 +35,9 @@ type BuildTypeScriptProgramOptions struct {
 	Excludes []string
 	// If present, add additional dependencies -> version string to package.json.
 	MoreDependencies map[string]string
+	// If present, custom writers that will capture stdout/stderr.
+	Stdout io.Writer
+	Stderr io.Writer
 }
 
 // TypeScriptProgram is a TypeScript-specific implementation of Program.
@@ -105,8 +110,7 @@ func BuildTypeScriptProgram(ctx context.Context, options BuildTypeScriptProgramO
 		if err != nil {
 			return nil, fmt.Errorf("cannot get absolute path from version path: %w", err)
 		}
-		pkgs := []string{"activity", "client", "common", "internal-workflow-common",
-			"internal-non-workflow-common", "proto", "worker", "workflow"}
+		pkgs := []string{"activity", "client", "common", "proto", "worker", "workflow"}
 		for _, pkg := range pkgs {
 			pkgPath := "file:" + filepath.Join(localPath, "packages", pkg)
 			packageJSONDepStr += fmt.Sprintf(`"@temporalio/%v": %q,`, pkg, pkgPath)
@@ -133,6 +137,7 @@ func BuildTypeScriptProgram(ctx context.Context, options BuildTypeScriptProgramO
   "dependencies": {
     ` + packageJSONDepStr + `
 	` + moreDeps + `
+    "@grpc/grpc-js": "^1.12.4",
     "commander": "^8.3.0",
     "ms": "^3.0.0-canary.1",
     "proto3-json-serializer": "^1.1.1",
@@ -143,7 +148,10 @@ func BuildTypeScriptProgram(ctx context.Context, options BuildTypeScriptProgramO
     "@types/node": "^16.11.59",
     "@types/uuid": "^8.3.4",
     "tsconfig-paths": "^3.12.0",
-    "typescript": "^4.4.2"
+    "typescript": "^5.8.3"
+  },
+  "overrides": {
+		"protobufjs": "7.5.1"
   }
 }`
 	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(packageJSON), 0644); err != nil {
@@ -183,7 +191,7 @@ func BuildTypeScriptProgram(ctx context.Context, options BuildTypeScriptProgramO
 	}
 	tsConfig := `{
   "extends": "@tsconfig/node16/tsconfig.json",
-  "version": "4.4.2",
+  "version": "5.8.3",
   "compilerOptions": {
     "baseUrl": ".",
     "outDir": "./tslib",
@@ -252,12 +260,12 @@ func TypeScriptProgramFromDir(dir string) (*TypeScriptProgram, error) {
 // Dir is the directory to run in.
 func (t *TypeScriptProgram) Dir() string { return t.dir }
 
-// NewCommand makes a new Node command. The first argument needs to be the name
-// of the script.
+// NewCommand makes a new Node command.
+// The first argument needs to be the name of the script.
 func (t *TypeScriptProgram) NewCommand(ctx context.Context, args ...string) (*exec.Cmd, error) {
 	args = append([]string{"-r", "tsconfig-paths/register"}, args...)
 	cmd := exec.CommandContext(ctx, "node", args...)
 	cmd.Dir = t.dir
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	setupCommandIO(cmd, nil, nil)
 	return cmd, nil
 }

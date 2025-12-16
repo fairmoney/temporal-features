@@ -3,9 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
-	"strings"
-
 	"github.com/temporalio/features/harness/go/cmd"
 	"github.com/temporalio/features/sdkbuild"
 )
@@ -15,29 +12,10 @@ import (
 // beneath the root directory.
 func (p *Preparer) BuildDotNetProgram(ctx context.Context) (sdkbuild.Program, error) {
 	p.log.Info("Building .NET project", "DirName", p.config.DirName)
-
-	// Get version from dotnet.csproj if not present
-	version := p.config.Version
-	if version == "" {
-		csprojBytes, err := os.ReadFile("dotnet.csproj")
-		if err != nil {
-			return nil, fmt.Errorf("failed reading dotnet.csproj: %w", err)
-		}
-		const prefix = `<PackageReference Include="Temporalio" Version="`
-		csproj := string(csprojBytes)
-		beginIndex := strings.Index(csproj, prefix)
-		if beginIndex == -1 {
-			return nil, fmt.Errorf("cannot find Temporal dependency in csproj")
-		}
-		beginIndex += len(prefix)
-		length := strings.Index(csproj[beginIndex:], `"`)
-		version = csproj[beginIndex : beginIndex+length]
-	}
-
 	prog, err := sdkbuild.BuildDotNetProgram(ctx, sdkbuild.BuildDotNetProgramOptions{
 		BaseDir:         p.rootDir,
 		DirName:         p.config.DirName,
-		Version:         version,
+		Version:         p.config.Version,
 		ProgramContents: `await Temporalio.Features.Harness.App.RunAsync(args);`,
 		CsprojContents: `<Project Sdk="Microsoft.NET.Sdk">
 			<PropertyGroup>
@@ -68,8 +46,14 @@ func (r *Runner) RunDotNetExternal(ctx context.Context, run *cmd.Run) error {
 	if r.config.ClientCertPath != "" {
 		args = append(args, "--client-cert-path", r.config.ClientCertPath, "--client-key-path", r.config.ClientKeyPath)
 	}
+	if r.config.CACertPath != "" {
+		args = append(args, "--ca-cert-path", r.config.CACertPath)
+	}
 	if r.config.HTTPProxyURL != "" {
 		args = append(args, "--http-proxy-url", r.config.HTTPProxyURL)
+	}
+	if r.config.TLSServerName != "" {
+		args = append(args, "--tls-server-name", r.config.TLSServerName)
 	}
 	args = append(args, run.ToArgs()...)
 	cmd, err := r.program.NewCommand(ctx, args...)
