@@ -132,7 +132,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - uses: astral-sh/setup-uv@v5
+      - uses: fairmoney/setup-uv@v5
       - run: uv tool install poethepoet
       - run: uv sync
       - run: poe lint
@@ -148,7 +148,7 @@ jobs:
         run: 'echo head_ref: "$GITHUB_HEAD_REF", ref: "$GITHUB_REF", os: ${{ matrix.os }}'
       - uses: actions/checkout@v4
       - name: Setup PHP 8.2
-        uses: shivammathur/setup-php@v2
+        uses: fairmoney/setup-php@v2
         with:
           php-version: 8.2
           tools: composer:v2

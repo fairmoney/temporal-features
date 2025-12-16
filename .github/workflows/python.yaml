@@ -84,7 +84,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - uses: astral-sh/setup-uv@v5
+      - uses: fairmoney/setup-uv@v5
 
       # Build SDK ==================================================
       - name: Install Protoc
@@ -94,12 +94,12 @@ jobs:
           # TODO: Upgrade proto once https://github.com/fairmoney/setup-protoc/issues/99 is fixed
           version: '23.x'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: fairmoney/rust-toolchain@stable
       - uses: fairmoney/rust-cache@v2
         if: ${{ inputs.version-is-repo-ref }}
         with:
           workspaces: sdk-python/temporalio/bridge
-      - uses: astral-sh/setup-uv@v5
+      - uses: fairmoney/setup-uv@v5
       - run: uv sync
         if: ${{ inputs.version-is-repo-ref }}
         working-directory: sdk-python
